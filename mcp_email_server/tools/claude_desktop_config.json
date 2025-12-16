@@ -1,6 +1,6 @@
 {
     "mcpServers": {
-        "zerolib-email": {
+        "ultrapro-email": {
             "command": "{{ ENTRYPOINT }}",
             "args": ["stdio"]
         }

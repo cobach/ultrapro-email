@@ -13,8 +13,10 @@ from mcp_email_server.config import (
 from mcp_email_server.emails.dispatcher import dispatch_handler
 from mcp_email_server.emails.models import (
     AttachmentDownloadResponse,
+    CategoryUnread,
     EmailContentBatchResponse,
     EmailMetadataPageResponse,
+    UnreadResponse,
 )
 
 mcp = FastMCP("email")
@@ -86,7 +88,7 @@ async def list_emails_metadata(
 
 
 @mcp.tool(
-    description="Get the full content (including body) of one or more emails by their email_id. Use list_emails_metadata first to get the email_id."
+    description="Get the full content (including body) of one or more emails by their email_id. Use list_emails_metadata first to get the email_id. This operation does NOT mark emails as read."
 )
 async def get_emails_content(
     account_name: Annotated[str, Field(description="The name of the email account.")],
@@ -203,3 +205,72 @@ async def download_attachment(
 
     handler = dispatch_handler(account_name)
     return await handler.download_attachment(email_id, attachment_name, save_path)
+
+
+@mcp.tool(
+    description="Check for unread emails. Returns count of unread and total emails, plus IDs of most recent unread.",
+)
+async def check_unread(
+    account_name: Annotated[str, Field(description="The name of the email account.")],
+    max_ids: Annotated[
+        int, Field(default=20, description="Maximum number of unread email IDs to return per category.")
+    ] = 20,
+) -> UnreadResponse:
+    handler = dispatch_handler(account_name)
+    result = await handler.get_unread(max_ids)
+
+    # Convert dict to CategoryUnread models
+    by_category = {
+        cat: CategoryUnread(
+            unread_count=data["unread_count"],
+            email_ids=data["email_ids"],
+            has_more=data["has_more"],
+        )
+        for cat, data in result["by_category"].items()
+    }
+
+    return UnreadResponse(
+        total_unread=result["total_unread"],
+        total_count=result["total_count"],
+        by_category=by_category,
+    )
+
+
+@mcp.tool(
+    description="Mark one or more emails as read without fetching their content.",
+)
+async def mark_as_read(
+    account_name: Annotated[str, Field(description="The name of the email account.")],
+    email_ids: Annotated[
+        list[str],
+        Field(description="List of email_id to mark as read (obtained from check_unread or list_emails_metadata)."),
+    ],
+    mailbox: Annotated[str, Field(default="INBOX", description="The mailbox containing the emails.")] = "INBOX",
+) -> str:
+    handler = dispatch_handler(account_name)
+    marked_ids, failed_ids = await handler.mark_as_read(email_ids, mailbox)
+
+    result = f"Marked {len(marked_ids)} email(s) as read"
+    if failed_ids:
+        result += f", failed to mark {len(failed_ids)} email(s): {', '.join(failed_ids)}"
+    return result
+
+
+@mcp.tool(
+    description="Mark one or more emails as unread.",
+)
+async def mark_as_unread(
+    account_name: Annotated[str, Field(description="The name of the email account.")],
+    email_ids: Annotated[
+        list[str],
+        Field(description="List of email_id to mark as unread (obtained from list_emails_metadata)."),
+    ],
+    mailbox: Annotated[str, Field(default="INBOX", description="The mailbox containing the emails.")] = "INBOX",
+) -> str:
+    handler = dispatch_handler(account_name)
+    marked_ids, failed_ids = await handler.mark_as_unread(email_ids, mailbox)
+
+    result = f"Marked {len(marked_ids)} email(s) as unread"
+    if failed_ids:
+        result += f", failed to mark {len(failed_ids)} email(s): {', '.join(failed_ids)}"
+    return result

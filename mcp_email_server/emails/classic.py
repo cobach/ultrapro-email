@@ -182,6 +182,151 @@ class EmailClient:
             except Exception as e:
                 logger.info(f"Error during logout: {e}")
 
+    # Gmail categories to check
+    GMAIL_CATEGORIES = [
+        "INBOX",
+        "CATEGORY_SOCIAL",
+        "CATEGORY_PROMOTIONS",
+        "CATEGORY_UPDATES",
+        "CATEGORY_FORUMS",
+    ]
+
+    def _is_gmail(self) -> bool:
+        """Check if this is a Gmail account."""
+        return "gmail" in self.email_server.host.lower()
+
+    async def _get_unread_for_mailbox(
+        self,
+        imap,
+        mailbox: str,
+        max_ids: int,
+    ) -> dict[str, Any]:
+        """Get unread info for a single mailbox."""
+        try:
+            result = await imap.select(mailbox)
+            status = result[0] if isinstance(result, tuple) else result
+            if str(status).upper() != "OK":
+                return {"unread_count": 0, "email_ids": [], "has_more": False}
+
+            _, unseen_messages = await imap.uid_search("UNSEEN")
+            unseen_ids = []
+            if unseen_messages and unseen_messages[0]:
+                unseen_ids = [uid.decode("utf-8") for uid in unseen_messages[0].split()]
+
+            unread_count = len(unseen_ids)
+            recent_ids = list(reversed(unseen_ids))[:max_ids]
+            has_more = unread_count > max_ids
+
+            return {
+                "unread_count": unread_count,
+                "email_ids": recent_ids,
+                "has_more": has_more,
+            }
+        except Exception as e:
+            logger.warning(f"Failed to get unread for mailbox {mailbox}: {e}")
+            return {"unread_count": 0, "email_ids": [], "has_more": False}
+
+    async def get_unread(
+        self,
+        max_ids: int = 20,
+    ) -> dict[str, Any]:
+        """Get unread emails count and IDs, with category breakdown for Gmail."""
+        imap = self.imap_class(self.email_server.host, self.email_server.port)
+        try:
+            await imap._client_task
+            await imap.wait_hello_from_server()
+            await imap.login(self.email_server.user_name, self.email_server.password)
+
+            # Get total count from INBOX
+            await imap.select("INBOX")
+            _, all_messages = await imap.uid_search("ALL")
+            total_count = len(all_messages[0].split()) if all_messages and all_messages[0] else 0
+
+            # Determine which categories to check
+            categories = self.GMAIL_CATEGORIES if self._is_gmail() else ["INBOX"]
+
+            # Get unread for each category
+            by_category = {}
+            total_unread = 0
+
+            for category in categories:
+                cat_result = await self._get_unread_for_mailbox(imap, category, max_ids)
+                by_category[category] = cat_result
+                total_unread += cat_result["unread_count"]
+
+            return {
+                "total_unread": total_unread,
+                "total_count": total_count,
+                "by_category": by_category,
+            }
+        finally:
+            try:
+                await imap.logout()
+            except Exception as e:
+                logger.info(f"Error during logout: {e}")
+
+    async def mark_as_read(
+        self,
+        email_ids: list[str],
+        mailbox: str = "INBOX",
+    ) -> tuple[list[str], list[str]]:
+        """Mark emails as read. Returns (marked_ids, failed_ids)."""
+        imap = self.imap_class(self.email_server.host, self.email_server.port)
+        marked_ids = []
+        failed_ids = []
+
+        try:
+            await imap._client_task
+            await imap.wait_hello_from_server()
+            await imap.login(self.email_server.user_name, self.email_server.password)
+            await imap.select(mailbox)
+
+            for email_id in email_ids:
+                try:
+                    await imap.uid("store", email_id, "+FLAGS", r"(\Seen)")
+                    marked_ids.append(email_id)
+                except Exception as e:
+                    logger.error(f"Failed to mark email {email_id} as read: {e}")
+                    failed_ids.append(email_id)
+
+            return marked_ids, failed_ids
+        finally:
+            try:
+                await imap.logout()
+            except Exception as e:
+                logger.info(f"Error during logout: {e}")
+
+    async def mark_as_unread(
+        self,
+        email_ids: list[str],
+        mailbox: str = "INBOX",
+    ) -> tuple[list[str], list[str]]:
+        """Mark emails as unread. Returns (marked_ids, failed_ids)."""
+        imap = self.imap_class(self.email_server.host, self.email_server.port)
+        marked_ids = []
+        failed_ids = []
+
+        try:
+            await imap._client_task
+            await imap.wait_hello_from_server()
+            await imap.login(self.email_server.user_name, self.email_server.password)
+            await imap.select(mailbox)
+
+            for email_id in email_ids:
+                try:
+                    await imap.uid("store", email_id, "-FLAGS", r"(\Seen)")
+                    marked_ids.append(email_id)
+                except Exception as e:
+                    logger.error(f"Failed to mark email {email_id} as unread: {e}")
+                    failed_ids.append(email_id)
+
+            return marked_ids, failed_ids
+        finally:
+            try:
+                await imap.logout()
+            except Exception as e:
+                logger.info(f"Error during logout: {e}")
+
     async def get_emails_metadata_stream(  # noqa: C901
         self,
         page: int = 1,
@@ -342,8 +487,8 @@ class EmailClient:
         return None
 
     async def _fetch_email_with_formats(self, imap, email_id: str) -> list | None:
-        """Try different fetch formats to get email data."""
-        fetch_formats = ["RFC822", "BODY[]", "BODY.PEEK[]", "(BODY.PEEK[])"]
+        """Try different fetch formats to get email data. Uses PEEK to avoid marking as read."""
+        fetch_formats = ["BODY.PEEK[]", "(BODY.PEEK[])", "RFC822", "BODY[]"]
 
         for fetch_format in fetch_formats:
             try:
@@ -819,3 +964,15 @@ class ClassicEmailHandler(EmailHandler):
             size=result["size"],
             saved_path=result["saved_path"],
         )
+
+    async def get_unread(self, max_ids: int = 20) -> dict:
+        """Get unread emails count and IDs with category breakdown."""
+        return await self.incoming_client.get_unread(max_ids)
+
+    async def mark_as_read(self, email_ids: list[str], mailbox: str = "INBOX") -> tuple[list[str], list[str]]:
+        """Mark emails as read. Returns (marked_ids, failed_ids)."""
+        return await self.incoming_client.mark_as_read(email_ids, mailbox)
+
+    async def mark_as_unread(self, email_ids: list[str], mailbox: str = "INBOX") -> tuple[list[str], list[str]]:
+        """Mark emails as unread. Returns (marked_ids, failed_ids)."""
+        return await self.incoming_client.mark_as_unread(email_ids, mailbox)

@@ -70,3 +70,19 @@ class AttachmentDownloadResponse(BaseModel):
     mime_type: str
     size: int
     saved_path: str
+
+
+class CategoryUnread(BaseModel):
+    """Unread info for a single category/mailbox"""
+
+    unread_count: int
+    email_ids: list[str]
+    has_more: bool
+
+
+class UnreadResponse(BaseModel):
+    """Unread emails check response with category breakdown"""
+
+    total_unread: int
+    total_count: int
+    by_category: dict[str, CategoryUnread]

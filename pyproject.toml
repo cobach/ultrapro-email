@@ -1,10 +1,10 @@
 [project]
-name = "mcp-email-server"
-version = "0.0.1"
-description = "IMAP and SMTP via MCP Server"
-authors = [{ name = "ai-zerolab", email = "jizhongsheng957@gmail.com" }]
+name = "ultrapro-email"
+version = "0.1.0"
+description = "ultraPRO Email MCP Server - IMAP and SMTP integration for Claude"
+authors = [{ name = "César Obach / ultraBASE", email = "cesar@ultrabase.cl" }]
 readme = "README.md"
-keywords = ["MCP", "IMAP", "SMTP", "email"]
+keywords = ["MCP", "IMAP", "SMTP", "email", "ultraPRO", "Claude"]
 requires-python = ">=3.10,<4.0"
 classifiers = [
     "Intended Audience :: Developers",
@@ -31,12 +31,10 @@ dependencies = [
 ]
 
 [project.scripts]
-mcp-email-server = "mcp_email_server.cli:app"
+ultrapro-email = "mcp_email_server.cli:app"
 
 [project.urls]
-Homepage = "https://ai-zerolab.github.io/mcp-email-server/"
-Repository = "https://github.com/ai-zerolab/mcp-email-server"
-Documentation = "https://ai-zerolab.github.io/mcp-email-server/"
+Repository = "https://github.com/cobach/ultrapro-email"
 
 [dependency-groups]
 dev = [
@@ -55,6 +53,9 @@ dev = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["mcp_email_server"]
 
 [tool.setuptools]
 py-modules = ["mcp_email_server"]

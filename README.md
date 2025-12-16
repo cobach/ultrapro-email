@@ -191,6 +191,21 @@ npx -y @smithery/cli install @ai-zerolab/mcp-email-server --client claude
 
 ## Usage
 
+### Reading Emails Without Marking as Read
+
+The `get_emails_content` tool fetches email content **without marking emails as read**. This gives you full control over read status:
+
+```python
+# Fetch emails - they remain unread
+emails = await get_emails_content(account_name="work", email_ids=["123", "456"])
+
+# Explicitly mark as read when you're done
+await mark_as_read(account_name="work", email_ids=["123", "456"])
+
+# Or mark back as unread if needed
+await mark_as_unread(account_name="work", email_ids=["123"])
+```
+
 ### Replying to Emails
 
 To reply to an email with proper threading (so it appears in the same conversation in email clients):
