@@ -60,6 +60,38 @@ async def add_email_account(email: EmailSettings) -> str:
 
 
 @mcp.tool(
+    description="Update an existing email account's password and/or display name. At least one of password or full_name must be provided."
+)
+async def update_email_account(
+    account_name: Annotated[str, Field(description="The name of the email account to update.")],
+    password: Annotated[
+        str | None,
+        Field(default=None, description="New password (App Password for Gmail). Updates both IMAP and SMTP."),
+    ] = None,
+    full_name: Annotated[
+        str | None,
+        Field(default=None, description="New display name for the account."),
+    ] = None,
+) -> str:
+    if password is None and full_name is None:
+        raise ValueError("At least one of 'password' or 'full_name' must be provided")
+
+    settings = get_settings()
+    if not settings.update_account(account_name, password=password, full_name=full_name):
+        raise ValueError(f"Account '{account_name}' not found")
+
+    settings.store()
+
+    updated_fields = []
+    if password is not None:
+        updated_fields.append("password")
+    if full_name is not None:
+        updated_fields.append(f"full_name='{full_name}'")
+
+    return f"Account '{account_name}' updated: {', '.join(updated_fields)}"
+
+
+@mcp.tool(
     description="List email metadata (email_id, subject, sender, recipients, date) without body content. Returns email_id for use with get_emails_content."
 )
 async def list_emails_metadata(

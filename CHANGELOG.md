@@ -13,6 +13,7 @@ Fork de [mcp-email-server](https://github.com/ai-zerolab/mcp-email-server) con m
 - `list_flagged` tool - listar emails con flag, agrupados por keyword
 - `set_flag` tool - agregar flags/keywords a emails
 - `remove_flag` tool - quitar flags/keywords de emails
+- `update_email_account` tool - actualizar password y/o full_name de una cuenta
 - Campos `flags` y `keywords` en metadata de emails
 - Auto-detección Markdown → HTML en `send_email`
 - Tamaño de emails (`size_bytes`, `size_human`) en `check_unread` y `list_emails_metadata`

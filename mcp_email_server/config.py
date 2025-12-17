@@ -293,6 +293,23 @@ class Settings(BaseSettings):
                 return True
         return False
 
+    def update_account(
+        self,
+        account_name: str,
+        password: str | None = None,
+        full_name: str | None = None,
+    ) -> bool:
+        """Update password and/or full_name for an email account. Returns True if account was found."""
+        for email in self.emails:
+            if email.account_name == account_name:
+                if password is not None:
+                    email.incoming.password = password
+                    email.outgoing.password = password
+                if full_name is not None:
+                    email.full_name = full_name
+                return True
+        return False
+
     def get_account(self, account_name: str, masked: bool = False) -> EmailSettings | ProviderSettings | None:
         for email in self.emails:
             if email.account_name == account_name:
