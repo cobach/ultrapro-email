@@ -269,7 +269,7 @@ class EmailClient:
             result = await imap.select(mailbox)
             status = result[0] if isinstance(result, tuple) else result
             if str(status).upper() != "OK":
-                return {"unread_count": 0, "email_ids": [], "has_more": False}
+                return {"unread_count": 0, "email_ids": [], "emails": [], "has_more": False}
 
             _, unseen_messages = await imap.uid_search("UNSEEN")
             unseen_ids = []
@@ -280,14 +280,33 @@ class EmailClient:
             recent_ids = list(reversed(unseen_ids))[:max_ids]
             has_more = unread_count > max_ids
 
+            # Fetch sizes for recent emails
+            emails_with_size = []
+            for email_id in recent_ids:
+                try:
+                    _, data = await imap.uid("fetch", email_id, "RFC822.SIZE")
+                    size_bytes = 0
+                    if data:
+                        for item in data:
+                            if isinstance(item, bytes) and b"RFC822.SIZE" in item:
+                                match = re.search(rb"RFC822\.SIZE\s+(\d+)", item)
+                                if match:
+                                    size_bytes = int(match.group(1))
+                                break
+                    emails_with_size.append({"email_id": email_id, "size_bytes": size_bytes})
+                except Exception as e:
+                    logger.warning(f"Failed to get size for email {email_id}: {e}")
+                    emails_with_size.append({"email_id": email_id, "size_bytes": 0})
+
             return {
                 "unread_count": unread_count,
                 "email_ids": recent_ids,
+                "emails": emails_with_size,
                 "has_more": has_more,
             }
         except Exception as e:
             logger.warning(f"Failed to get unread for mailbox {mailbox}: {e}")
-            return {"unread_count": 0, "email_ids": [], "has_more": False}
+            return {"unread_count": 0, "email_ids": [], "emails": [], "has_more": False}
 
     async def get_unread(
         self,
@@ -443,12 +462,21 @@ class EmailClient:
                     # Convert email_id from bytes to string
                     email_id_str = email_id.decode("utf-8")
 
-                    # Fetch only headers to get metadata without body
-                    _, data = await imap.uid("fetch", email_id_str, "BODY.PEEK[HEADER]")
+                    # Fetch headers and size
+                    _, data = await imap.uid("fetch", email_id_str, "(BODY.PEEK[HEADER] RFC822.SIZE)")
 
                     if not data:
                         logger.error(f"Failed to fetch headers for UID {email_id_str}")
                         continue
+
+                    # Parse RFC822.SIZE from response
+                    size_bytes = None
+                    for item in data:
+                        if isinstance(item, bytes) and b"RFC822.SIZE" in item:
+                            match = re.search(rb"RFC822\.SIZE\s+(\d+)", item)
+                            if match:
+                                size_bytes = int(match.group(1))
+                            break
 
                     # Find the email headers in the response
                     raw_headers = None
@@ -506,6 +534,7 @@ class EmailClient:
                                 "to": to_addresses,
                                 "date": date,
                                 "attachments": [],  # We don't fetch attachment info for metadata
+                                "size_bytes": size_bytes,
                             }
                             yield metadata
                         except Exception as e:

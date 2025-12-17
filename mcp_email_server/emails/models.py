@@ -4,6 +4,16 @@ from typing import Any
 from pydantic import BaseModel
 
 
+def format_size(size_bytes: int) -> str:
+    """Format bytes to human readable string."""
+    if size_bytes < 1024:
+        return f"{size_bytes} B"
+    elif size_bytes < 1024 * 1024:
+        return f"{size_bytes / 1024:.1f} KB"
+    else:
+        return f"{size_bytes / (1024 * 1024):.1f} MB"
+
+
 class EmailMetadata(BaseModel):
     """Email metadata"""
 
@@ -14,9 +24,12 @@ class EmailMetadata(BaseModel):
     recipients: list[str]  # Recipient list
     date: datetime
     attachments: list[str]
+    size_bytes: int | None = None
+    size_human: str | None = None
 
     @classmethod
     def from_email(cls, email: dict[str, Any]):
+        size_bytes = email.get("size_bytes")
         return cls(
             email_id=email["email_id"],
             message_id=email.get("message_id"),
@@ -25,6 +38,8 @@ class EmailMetadata(BaseModel):
             recipients=email.get("to", []),
             date=email["date"],
             attachments=email["attachments"],
+            size_bytes=size_bytes,
+            size_human=format_size(size_bytes) if size_bytes else None,
         )
 
 
@@ -72,11 +87,20 @@ class AttachmentDownloadResponse(BaseModel):
     saved_path: str
 
 
+class EmailSizeInfo(BaseModel):
+    """Email ID with size information"""
+
+    email_id: str
+    size_bytes: int
+    size_human: str
+
+
 class CategoryUnread(BaseModel):
     """Unread info for a single category/mailbox"""
 
     unread_count: int
-    email_ids: list[str]
+    email_ids: list[str]  # Kept for backwards compatibility
+    emails: list[EmailSizeInfo] | None = None  # New: includes size info
     has_more: bool
 
 

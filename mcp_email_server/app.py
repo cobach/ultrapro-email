@@ -17,7 +17,9 @@ from mcp_email_server.emails.models import (
     CategoryUnread,
     EmailContentBatchResponse,
     EmailMetadataPageResponse,
+    EmailSizeInfo,
     UnreadResponse,
+    format_size,
 )
 
 mcp = FastMCP("email")
@@ -220,7 +222,7 @@ async def download_attachment(
 
 
 @mcp.tool(
-    description="Check for unread emails. Returns count of unread and total emails, plus IDs of most recent unread.",
+    description="Check for unread emails. Returns count of unread and total emails, plus IDs and sizes of most recent unread.",
 )
 async def check_unread(
     account_name: Annotated[str, Field(description="The name of the email account.")],
@@ -232,14 +234,24 @@ async def check_unread(
     result = await handler.get_unread(max_ids)
 
     # Convert dict to CategoryUnread models
-    by_category = {
-        cat: CategoryUnread(
+    by_category = {}
+    for cat, data in result["by_category"].items():
+        emails_with_size = None
+        if "emails" in data and data["emails"]:
+            emails_with_size = [
+                EmailSizeInfo(
+                    email_id=e["email_id"],
+                    size_bytes=e["size_bytes"],
+                    size_human=format_size(e["size_bytes"]),
+                )
+                for e in data["emails"]
+            ]
+        by_category[cat] = CategoryUnread(
             unread_count=data["unread_count"],
             email_ids=data["email_ids"],
+            emails=emails_with_size,
             has_more=data["has_more"],
         )
-        for cat, data in result["by_category"].items()
-    }
 
     return UnreadResponse(
         total_unread=result["total_unread"],
