@@ -95,6 +95,42 @@ class IMAPConnectionError(Exception):
     pass
 
 
+# Apple Mail color flags mapping
+# $MailFlagBit0 = 1, $MailFlagBit1 = 2, $MailFlagBit2 = 4
+APPLE_MAIL_COLORS = {
+    1: "Red",
+    2: "Orange",
+    3: "Yellow",
+    4: "Green",
+    5: "Blue",
+    6: "Purple",
+    7: "Gray",
+}
+
+
+def _convert_mail_flag_bits_to_color(keywords: list[str]) -> tuple[list[str], str | None]:
+    """Convert $MailFlagBit* keywords to Apple Mail color name.
+
+    Returns:
+        Tuple of (remaining_keywords, color_name or None)
+    """
+    bit_value = 0
+    remaining = []
+
+    for kw in keywords:
+        if kw == "$MailFlagBit0":
+            bit_value |= 1
+        elif kw == "$MailFlagBit1":
+            bit_value |= 2
+        elif kw == "$MailFlagBit2":
+            bit_value |= 4
+        else:
+            remaining.append(kw)
+
+    color = APPLE_MAIL_COLORS.get(bit_value) if bit_value > 0 else None
+    return remaining, color
+
+
 class EmailClient:
     def __init__(self, email_server: EmailServer, sender: str | None = None):
         self.email_server = email_server
@@ -513,14 +549,35 @@ class EmailClient:
                 except Exception as e:
                     logger.warning(f"Failed to fetch FLAGS for chunk: {e}")
 
-            # Categorize by keyword
+            # Categorize by keyword, converting Apple Mail flag bits to colors
             for email_id in email_ids:
-                keywords = email_flags.get(email_id, [])
-                if keywords:
+                raw_keywords = email_flags.get(email_id, [])
+                if raw_keywords:
+                    # Convert $MailFlagBit* to color name
+                    keywords, color = _convert_mail_flag_bits_to_color(raw_keywords)
+
+                    # Add color as a keyword if present
+                    if color:
+                        if color not in by_keyword:
+                            by_keyword[color] = []
+                        by_keyword[color].append(email_id)
+
+                    # Add remaining keywords (excluding $Forwarded/Forwarded duplicates)
+                    seen_forwarded = False
                     for kw in keywords:
+                        # Skip duplicate Forwarded variants
+                        if kw in ("$Forwarded", "Forwarded"):
+                            if seen_forwarded:
+                                continue
+                            seen_forwarded = True
+                            kw = "Forwarded"  # Normalize
                         if kw not in by_keyword:
                             by_keyword[kw] = []
                         by_keyword[kw].append(email_id)
+
+                    # If no keywords and no color, mark as no keyword
+                    if not keywords and not color:
+                        no_keyword.append(email_id)
                 else:
                     no_keyword.append(email_id)
 
