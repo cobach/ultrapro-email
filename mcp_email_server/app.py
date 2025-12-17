@@ -1,3 +1,4 @@
+import time
 from datetime import datetime
 from typing import Annotated, Literal
 
@@ -36,10 +37,12 @@ async def list_available_accounts() -> list[AccountAttributes]:
 
 @mcp.tool(description="Add a new email account configuration to the settings.")
 async def add_email_account(email: EmailSettings) -> str:
+    start_time = time.time()
     settings = get_settings()
     settings.add_email(email)
     settings.store()
-    return f"Successfully added email account '{email.account_name}'"
+    elapsed_ms = int((time.time() - start_time) * 1000)
+    return f"Successfully added email account '{email.account_name}' ({elapsed_ms}ms)"
 
 
 @mcp.tool(
@@ -146,6 +149,11 @@ async def send_email(
         ),
     ] = None,
 ) -> str:
+    start_time = time.time()
+    settings = get_settings()
+    account = settings.get_account(account_name)
+    sender_email = account.email_address if account else account_name
+
     handler = dispatch_handler(account_name)
     await handler.send_email(
         recipients,
@@ -158,9 +166,11 @@ async def send_email(
         in_reply_to,
         references,
     )
+
+    elapsed_ms = int((time.time() - start_time) * 1000)
     recipient_str = ", ".join(recipients)
     attachment_info = f" with {len(attachments)} attachment(s)" if attachments else ""
-    return f"Email sent successfully to {recipient_str}{attachment_info}"
+    return f"Email sent from {sender_email} to {recipient_str}{attachment_info} ({elapsed_ms}ms)"
 
 
 @mcp.tool(
@@ -174,13 +184,15 @@ async def delete_emails(
     ],
     mailbox: Annotated[str, Field(default="INBOX", description="The mailbox to delete emails from.")] = "INBOX",
 ) -> str:
+    start_time = time.time()
     handler = dispatch_handler(account_name)
     deleted_ids, failed_ids = await handler.delete_emails(email_ids, mailbox)
 
+    elapsed_ms = int((time.time() - start_time) * 1000)
     result = f"Successfully deleted {len(deleted_ids)} email(s)"
     if failed_ids:
         result += f", failed to delete {len(failed_ids)} email(s): {', '.join(failed_ids)}"
-    return result
+    return f"{result} ({elapsed_ms}ms)"
 
 
 @mcp.tool(
@@ -247,13 +259,15 @@ async def mark_as_read(
     ],
     mailbox: Annotated[str, Field(default="INBOX", description="The mailbox containing the emails.")] = "INBOX",
 ) -> str:
+    start_time = time.time()
     handler = dispatch_handler(account_name)
     marked_ids, failed_ids = await handler.mark_as_read(email_ids, mailbox)
 
+    elapsed_ms = int((time.time() - start_time) * 1000)
     result = f"Marked {len(marked_ids)} email(s) as read"
     if failed_ids:
         result += f", failed to mark {len(failed_ids)} email(s): {', '.join(failed_ids)}"
-    return result
+    return f"{result} ({elapsed_ms}ms)"
 
 
 @mcp.tool(
@@ -267,10 +281,12 @@ async def mark_as_unread(
     ],
     mailbox: Annotated[str, Field(default="INBOX", description="The mailbox containing the emails.")] = "INBOX",
 ) -> str:
+    start_time = time.time()
     handler = dispatch_handler(account_name)
     marked_ids, failed_ids = await handler.mark_as_unread(email_ids, mailbox)
 
+    elapsed_ms = int((time.time() - start_time) * 1000)
     result = f"Marked {len(marked_ids)} email(s) as unread"
     if failed_ids:
         result += f", failed to mark {len(failed_ids)} email(s): {', '.join(failed_ids)}"
-    return result
+    return f"{result} ({elapsed_ms}ms)"
