@@ -139,11 +139,20 @@ class EmailClient:
             raise IMAPConnectionError(msg) from e
 
         try:
-            await imap.login(user, server.password)
+            response = await imap.login(user, server.password)
+            # aioimaplib returns Response with result='NO' on auth failure, not exception
+            if response.result != "OK":
+                error_lines = [line.decode() if isinstance(line, bytes) else str(line) for line in response.lines]
+                error_detail = " ".join(error_lines) or "Authentication failed"
+                msg = f"Login failed for {user} on {host}:{port}: {error_detail}"
+                logger.error(msg)
+                raise IMAPConnectionError(msg)
         except TimeoutError as e:
             msg = f"Login timeout for {user} on IMAP server {host}:{port}"
             logger.error(msg)
             raise IMAPConnectionError(msg) from e
+        except IMAPConnectionError:
+            raise
         except Exception as e:
             error_detail = str(e) if str(e) else "Authentication failed"
             msg = f"Login failed for {user} on {host}:{port}: {error_detail}"

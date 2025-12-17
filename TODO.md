@@ -2,7 +2,7 @@
 
 ## Bugs
 
-- [ ] Cuenta "personal" falla en login IMAP (timeout 10s) - verificar App Password de Gmail
+(Sin bugs pendientes)
 
 ## Código
 
