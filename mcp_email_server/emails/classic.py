@@ -89,6 +89,12 @@ def strip_html_tags(html: str) -> str:
     return re.sub(r"\n\s*\n", "\n\n", clean).strip()
 
 
+class IMAPConnectionError(Exception):
+    """Custom exception for IMAP connection errors with descriptive messages."""
+
+    pass
+
+
 class EmailClient:
     def __init__(self, email_server: EmailServer, sender: str | None = None):
         self.email_server = email_server
@@ -98,6 +104,51 @@ class EmailClient:
 
         self.smtp_use_tls = self.email_server.use_ssl
         self.smtp_start_tls = self.email_server.start_ssl
+
+    async def _imap_connect_and_login(self, imap, server: EmailServer | None = None) -> None:
+        """Connect and login to IMAP server with descriptive error handling.
+
+        Args:
+            imap: The IMAP client instance
+            server: Optional server config. Uses self.email_server if not provided.
+
+        Raises:
+            IMAPConnectionError: With descriptive message on connection/login failure.
+        """
+        server = server or self.email_server
+        host = server.host
+        port = server.port
+        user = server.user_name
+
+        try:
+            await imap._client_task
+        except TimeoutError as e:
+            msg = f"Connection timeout to IMAP server {host}:{port}"
+            logger.error(msg)
+            raise IMAPConnectionError(msg) from e
+        except OSError as e:
+            msg = f"Cannot connect to IMAP server {host}:{port}: {e or 'Connection refused'}"
+            logger.error(msg)
+            raise IMAPConnectionError(msg) from e
+
+        try:
+            await imap.wait_hello_from_server()
+        except TimeoutError as e:
+            msg = f"Timeout waiting for IMAP server {host}:{port} greeting"
+            logger.error(msg)
+            raise IMAPConnectionError(msg) from e
+
+        try:
+            await imap.login(user, server.password)
+        except TimeoutError as e:
+            msg = f"Login timeout for {user} on IMAP server {host}:{port}"
+            logger.error(msg)
+            raise IMAPConnectionError(msg) from e
+        except Exception as e:
+            error_detail = str(e) if str(e) else "Authentication failed"
+            msg = f"Login failed for {user} on {host}:{port}: {error_detail}"
+            logger.error(msg)
+            raise IMAPConnectionError(msg) from e
 
     def _parse_email_data(self, raw_email: bytes, email_id: str | None = None) -> dict[str, Any]:  # noqa: C901
         """Parse raw email data into a structured dictionary."""
@@ -224,12 +275,7 @@ class EmailClient:
     ) -> int:
         imap = self.imap_class(self.email_server.host, self.email_server.port)
         try:
-            # Wait for the connection to be established
-            await imap._client_task
-            await imap.wait_hello_from_server()
-
-            # Login and select inbox
-            await imap.login(self.email_server.user_name, self.email_server.password)
+            await self._imap_connect_and_login(imap)
             await imap.select(mailbox)
             search_criteria = self._build_search_criteria(
                 before, since, subject, from_address=from_address, to_address=to_address
@@ -315,9 +361,7 @@ class EmailClient:
         """Get unread emails count and IDs, with category breakdown for Gmail."""
         imap = self.imap_class(self.email_server.host, self.email_server.port)
         try:
-            await imap._client_task
-            await imap.wait_hello_from_server()
-            await imap.login(self.email_server.user_name, self.email_server.password)
+            await self._imap_connect_and_login(imap)
 
             # Get total count from INBOX
             await imap.select("INBOX")
@@ -358,9 +402,7 @@ class EmailClient:
         failed_ids = []
 
         try:
-            await imap._client_task
-            await imap.wait_hello_from_server()
-            await imap.login(self.email_server.user_name, self.email_server.password)
+            await self._imap_connect_and_login(imap)
             await imap.select(mailbox)
 
             for email_id in email_ids:
@@ -389,9 +431,7 @@ class EmailClient:
         failed_ids = []
 
         try:
-            await imap._client_task
-            await imap.wait_hello_from_server()
-            await imap.login(self.email_server.user_name, self.email_server.password)
+            await self._imap_connect_and_login(imap)
             await imap.select(mailbox)
 
             for email_id in email_ids:
@@ -403,6 +443,160 @@ class EmailClient:
                     failed_ids.append(email_id)
 
             return marked_ids, failed_ids
+        finally:
+            try:
+                await imap.logout()
+            except Exception as e:
+                logger.info(f"Error during logout: {e}")
+
+    async def get_flagged_emails(
+        self,
+        keyword: str | None = None,
+        mailbox: str = "INBOX",
+    ) -> dict[str, Any]:
+        """Get flagged emails, optionally filtered by keyword. Returns counts and email IDs."""
+        imap = self.imap_class(self.email_server.host, self.email_server.port)
+
+        try:
+            await self._imap_connect_and_login(imap)
+            await imap.select(mailbox)
+
+            # Search for FLAGGED emails
+            _, messages = await imap.uid_search("FLAGGED")
+
+            if not messages or not messages[0]:
+                return {"total_flagged": 0, "by_keyword": {}, "email_ids": []}
+
+            email_ids = [uid.decode("utf-8") for uid in messages[0].split()]
+
+            # Batch fetch FLAGS in chunks (some servers have limits on command length)
+            by_keyword: dict[str, list[str]] = {}
+            no_keyword: list[str] = []
+            email_flags: dict[str, list[str]] = {}
+
+            # Process in chunks of 50 to avoid command length limits
+            chunk_size = 50
+            for i in range(0, len(email_ids), chunk_size):
+                chunk = email_ids[i : i + chunk_size]
+                ids_str = ",".join(chunk)
+
+                try:
+                    _, flags_data = await imap.uid("fetch", ids_str, "(FLAGS)")
+
+                    if flags_data:
+                        for item in flags_data:
+                            if isinstance(item, bytes) and b"FLAGS" in item:
+                                # Extract UID and FLAGS - try multiple patterns
+                                uid_match = re.search(rb"UID\s+(\d+)", item)
+                                if not uid_match:
+                                    # Try alternative pattern: sequence number at start
+                                    uid_match = re.search(rb"^(\d+)\s+\(", item)
+                                flags_match = re.search(rb"FLAGS\s*\(([^)]*)\)", item)
+
+                                if uid_match and flags_match:
+                                    uid = uid_match.group(1).decode("utf-8")
+                                    flags_str = flags_match.group(1).decode("utf-8")
+                                    keywords = []
+                                    for flag in flags_str.split():
+                                        if not flag.startswith("\\") and flag not in ("Recent",):
+                                            keywords.append(flag)
+                                    email_flags[uid] = keywords
+                except Exception as e:
+                    logger.warning(f"Failed to fetch FLAGS for chunk: {e}")
+
+            # Categorize by keyword
+            for email_id in email_ids:
+                keywords = email_flags.get(email_id, [])
+                if keywords:
+                    for kw in keywords:
+                        if kw not in by_keyword:
+                            by_keyword[kw] = []
+                        by_keyword[kw].append(email_id)
+                else:
+                    no_keyword.append(email_id)
+
+            if no_keyword:
+                by_keyword["(no keyword)"] = no_keyword
+
+            # If filtering by keyword, return only those
+            if keyword:
+                filtered_ids = by_keyword.get(keyword, [])
+                return {
+                    "total_flagged": len(filtered_ids),
+                    "keyword": keyword,
+                    "email_ids": filtered_ids,
+                }
+
+            return {
+                "total_flagged": len(email_ids),
+                "by_keyword": {k: {"count": len(v), "email_ids": v} for k, v in by_keyword.items()},
+                "email_ids": email_ids,
+            }
+        finally:
+            try:
+                await imap.logout()
+            except Exception as e:
+                logger.info(f"Error during logout: {e}")
+
+    async def set_flags(
+        self,
+        email_ids: list[str],
+        flags: list[str],
+        mailbox: str = "INBOX",
+    ) -> tuple[list[str], list[str]]:
+        """Add flags/keywords to emails. Returns (success_ids, failed_ids)."""
+        imap = self.imap_class(self.email_server.host, self.email_server.port)
+        success_ids = []
+        failed_ids = []
+
+        try:
+            await self._imap_connect_and_login(imap)
+            await imap.select(mailbox)
+
+            # Build flags string - system flags need backslash, keywords don't
+            flag_string = "(" + " ".join(flags) + ")"
+
+            for email_id in email_ids:
+                try:
+                    await imap.uid("store", email_id, "+FLAGS", flag_string)
+                    success_ids.append(email_id)
+                except Exception as e:
+                    logger.error(f"Failed to set flags on {email_id}: {e}")
+                    failed_ids.append(email_id)
+
+            return success_ids, failed_ids
+        finally:
+            try:
+                await imap.logout()
+            except Exception as e:
+                logger.info(f"Error during logout: {e}")
+
+    async def remove_flags(
+        self,
+        email_ids: list[str],
+        flags: list[str],
+        mailbox: str = "INBOX",
+    ) -> tuple[list[str], list[str]]:
+        """Remove flags/keywords from emails. Returns (success_ids, failed_ids)."""
+        imap = self.imap_class(self.email_server.host, self.email_server.port)
+        success_ids = []
+        failed_ids = []
+
+        try:
+            await self._imap_connect_and_login(imap)
+            await imap.select(mailbox)
+
+            flag_string = "(" + " ".join(flags) + ")"
+
+            for email_id in email_ids:
+                try:
+                    await imap.uid("store", email_id, "-FLAGS", flag_string)
+                    success_ids.append(email_id)
+                except Exception as e:
+                    logger.error(f"Failed to remove flags from {email_id}: {e}")
+                    failed_ids.append(email_id)
+
+            return success_ids, failed_ids
         finally:
             try:
                 await imap.logout()
@@ -423,12 +617,7 @@ class EmailClient:
     ) -> AsyncGenerator[dict[str, Any], None]:
         imap = self.imap_class(self.email_server.host, self.email_server.port)
         try:
-            # Wait for the connection to be established
-            await imap._client_task
-            await imap.wait_hello_from_server()
-
-            # Login and select inbox
-            await imap.login(self.email_server.user_name, self.email_server.password)
+            await self._imap_connect_and_login(imap)
             try:
                 await imap.id(name="mcp-email-server", version="1.0.0")
             except Exception as e:
@@ -462,21 +651,34 @@ class EmailClient:
                     # Convert email_id from bytes to string
                     email_id_str = email_id.decode("utf-8")
 
-                    # Fetch headers and size
-                    _, data = await imap.uid("fetch", email_id_str, "(BODY.PEEK[HEADER] RFC822.SIZE)")
+                    # Fetch headers, size, and flags
+                    _, data = await imap.uid("fetch", email_id_str, "(BODY.PEEK[HEADER] RFC822.SIZE FLAGS)")
 
                     if not data:
                         logger.error(f"Failed to fetch headers for UID {email_id_str}")
                         continue
 
-                    # Parse RFC822.SIZE from response
+                    # Parse RFC822.SIZE and FLAGS from response
                     size_bytes = None
+                    flags = []
+                    keywords = []
                     for item in data:
-                        if isinstance(item, bytes) and b"RFC822.SIZE" in item:
-                            match = re.search(rb"RFC822\.SIZE\s+(\d+)", item)
-                            if match:
-                                size_bytes = int(match.group(1))
-                            break
+                        if isinstance(item, bytes):
+                            # Parse size
+                            if b"RFC822.SIZE" in item:
+                                match = re.search(rb"RFC822\.SIZE\s+(\d+)", item)
+                                if match:
+                                    size_bytes = int(match.group(1))
+                            # Parse flags
+                            if b"FLAGS" in item:
+                                flags_match = re.search(rb"FLAGS\s*\(([^)]*)\)", item)
+                                if flags_match:
+                                    flags_str = flags_match.group(1).decode("utf-8")
+                                    for flag in flags_str.split():
+                                        if flag.startswith("\\"):
+                                            flags.append(flag)
+                                        elif flag and flag not in ("Recent",):
+                                            keywords.append(flag)
 
                     # Find the email headers in the response
                     raw_headers = None
@@ -535,6 +737,8 @@ class EmailClient:
                                 "date": date,
                                 "attachments": [],  # We don't fetch attachment info for metadata
                                 "size_bytes": size_bytes,
+                                "flags": flags if flags else None,
+                                "keywords": keywords if keywords else None,
                             }
                             yield metadata
                         except Exception as e:
@@ -597,12 +801,7 @@ class EmailClient:
     async def get_email_body_by_id(self, email_id: str, mailbox: str = "INBOX") -> dict[str, Any] | None:
         imap = self.imap_class(self.email_server.host, self.email_server.port)
         try:
-            # Wait for the connection to be established
-            await imap._client_task
-            await imap.wait_hello_from_server()
-
-            # Login and select inbox
-            await imap.login(self.email_server.user_name, self.email_server.password)
+            await self._imap_connect_and_login(imap)
             try:
                 await imap.id(name="mcp-email-server", version="1.0.0")
             except Exception as e:
@@ -615,6 +814,25 @@ class EmailClient:
                 logger.error(f"Failed to fetch UID {email_id} with any format")
                 return None
 
+            # Fetch FLAGS separately
+            flags = []
+            keywords = []
+            try:
+                _, flags_data = await imap.uid("fetch", email_id, "(FLAGS)")
+                if flags_data:
+                    for item in flags_data:
+                        if isinstance(item, bytes) and b"FLAGS" in item:
+                            flags_match = re.search(rb"FLAGS\s*\(([^)]*)\)", item)
+                            if flags_match:
+                                flags_str = flags_match.group(1).decode("utf-8")
+                                for flag in flags_str.split():
+                                    if flag.startswith("\\"):
+                                        flags.append(flag)
+                                    elif flag and flag not in ("Recent",):
+                                        keywords.append(flag)
+            except Exception as e:
+                logger.debug(f"Failed to fetch FLAGS for {email_id}: {e}")
+
             # Extract raw email data
             raw_email = self._extract_raw_email(data)
             if not raw_email:
@@ -623,7 +841,11 @@ class EmailClient:
 
             # Parse the email
             try:
-                return self._parse_email_data(raw_email, email_id)
+                result = self._parse_email_data(raw_email, email_id)
+                if result:
+                    result["flags"] = flags if flags else None
+                    result["keywords"] = keywords if keywords else None
+                return result
             except Exception as e:
                 logger.error(f"Error parsing email: {e!s}")
                 return None
@@ -644,10 +866,7 @@ class EmailClient:
         """Download a specific attachment from an email and save it to disk."""
         imap = self.imap_class(self.email_server.host, self.email_server.port)
         try:
-            await imap._client_task
-            await imap.wait_hello_from_server()
-
-            await imap.login(self.email_server.user_name, self.email_server.password)
+            await self._imap_connect_and_login(imap)
             try:
                 await imap.id(name="mcp-email-server", version="1.0.0")
             except Exception as e:
@@ -908,9 +1127,7 @@ class EmailClient:
         sent_folder_candidates = [f for f in sent_folder_candidates if f]
 
         try:
-            await imap._client_task
-            await imap.wait_hello_from_server()
-            await imap.login(incoming_server.user_name, incoming_server.password)
+            await self._imap_connect_and_login(imap, incoming_server)
 
             # Try to find and use the Sent folder
             for folder in sent_folder_candidates:
@@ -964,9 +1181,7 @@ class EmailClient:
         failed_ids = []
 
         try:
-            await imap._client_task
-            await imap.wait_hello_from_server()
-            await imap.login(self.email_server.user_name, self.email_server.password)
+            await self._imap_connect_and_login(imap)
             await imap.select(mailbox)
 
             for email_id in email_ids:
@@ -1047,6 +1262,8 @@ class ClassicEmailHandler(EmailHandler):
                             date=email_data["date"],
                             body=email_data["body"],
                             attachments=email_data["attachments"],
+                            flags=email_data.get("flags"),
+                            keywords=email_data.get("keywords"),
                         )
                     )
                 else:
@@ -1117,3 +1334,19 @@ class ClassicEmailHandler(EmailHandler):
     async def mark_as_unread(self, email_ids: list[str], mailbox: str = "INBOX") -> tuple[list[str], list[str]]:
         """Mark emails as unread. Returns (marked_ids, failed_ids)."""
         return await self.incoming_client.mark_as_unread(email_ids, mailbox)
+
+    async def get_flagged_emails(self, keyword: str | None = None, mailbox: str = "INBOX") -> dict[str, Any]:
+        """Get flagged emails, optionally filtered by keyword."""
+        return await self.incoming_client.get_flagged_emails(keyword, mailbox)
+
+    async def set_flags(
+        self, email_ids: list[str], flags: list[str], mailbox: str = "INBOX"
+    ) -> tuple[list[str], list[str]]:
+        """Add flags/keywords to emails. Returns (success_ids, failed_ids)."""
+        return await self.incoming_client.set_flags(email_ids, flags, mailbox)
+
+    async def remove_flags(
+        self, email_ids: list[str], flags: list[str], mailbox: str = "INBOX"
+    ) -> tuple[list[str], list[str]]:
+        """Remove flags/keywords from emails. Returns (success_ids, failed_ids)."""
+        return await self.incoming_client.remove_flags(email_ids, flags, mailbox)

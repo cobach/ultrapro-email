@@ -318,6 +318,45 @@ await update_account_permissions(
 - `NO_SEND` - All except EXECUTE
 - `NO_DELETE` - All except DELETE
 
+### Email Flags and Keywords
+
+Emails can have system flags (like `\Flagged`, `\Seen`) and custom keywords. The metadata includes these fields:
+
+```python
+# list_emails_metadata and get_emails_content include:
+{
+    "flags": ["\\Flagged", "\\Seen"],  # System flags
+    "keywords": ["Personal", "Important"]  # Custom keywords
+}
+```
+
+**List flagged emails:**
+
+```python
+result = await list_flagged(account_name="work")
+# Returns: total_flagged, by_keyword breakdown, and email_ids
+
+# Filter by specific keyword:
+result = await list_flagged(account_name="work", keyword="Personal")
+```
+
+**Add flags/keywords to emails:**
+
+```python
+# Add standard flag
+await set_flag(account_name="work", email_ids=["123", "456"], flags=["\\Flagged"])
+
+# Add custom keyword
+await set_flag(account_name="work", email_ids=["123"], flags=["Personal", "Alta"])
+```
+
+**Remove flags/keywords:**
+
+```python
+await remove_flag(account_name="work", email_ids=["123"], flags=["\\Flagged"])
+await remove_flag(account_name="work", email_ids=["123"], flags=["Personal"])
+```
+
 ## Development
 
 This project is managed using [uv](https://github.com/ai-zerolab/uv).

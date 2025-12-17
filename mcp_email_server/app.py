@@ -350,3 +350,76 @@ async def update_account_permissions(
 
     new_perms = format_permissions(settings.get_account(account_name).permissions)
     return f"Updated '{account_name}' permissions: {old_perms} -> {new_perms}"
+
+
+@mcp.tool(
+    description="List flagged emails with their keywords. Returns counts by keyword (e.g., Personal, Alta, HOLD) and email IDs.",
+)
+async def list_flagged(
+    account_name: Annotated[str, Field(description="The name of the email account.")],
+    keyword: Annotated[
+        str | None,
+        Field(default=None, description="Filter by specific keyword (e.g., 'Personal', 'Alta'). If not specified, returns all flagged emails grouped by keyword."),
+    ] = None,
+    mailbox: Annotated[str, Field(default="INBOX", description="The mailbox to search.")] = "INBOX",
+) -> dict:
+    _check_permission(account_name, Permission.LIST, "list flagged emails")
+    start_time = time.time()
+    handler = dispatch_handler(account_name)
+    result = await handler.get_flagged_emails(keyword, mailbox)
+    result["elapsed_ms"] = int((time.time() - start_time) * 1000)
+    return result
+
+
+@mcp.tool(
+    description="Add a flag or keyword to one or more emails. Use '\\\\Flagged' for the standard flag, or custom keywords like 'Personal', 'Alta', 'HOLD'.",
+)
+async def set_flag(
+    account_name: Annotated[str, Field(description="The name of the email account.")],
+    email_ids: Annotated[
+        list[str],
+        Field(description="List of email_id to flag (obtained from list_emails_metadata)."),
+    ],
+    flags: Annotated[
+        list[str],
+        Field(description="Flags to add. Use '\\\\Flagged' for standard flag, or keywords like 'Personal', 'Alta'."),
+    ],
+    mailbox: Annotated[str, Field(default="INBOX", description="The mailbox containing the emails.")] = "INBOX",
+) -> str:
+    _check_permission(account_name, Permission.UPDATE, "set flags")
+    start_time = time.time()
+    handler = dispatch_handler(account_name)
+    success_ids, failed_ids = await handler.set_flags(email_ids, flags, mailbox)
+
+    elapsed_ms = int((time.time() - start_time) * 1000)
+    result = f"Added flags to {len(success_ids)} email(s)"
+    if failed_ids:
+        result += f", failed on {len(failed_ids)} email(s): {', '.join(failed_ids)}"
+    return f"{result} ({elapsed_ms}ms)"
+
+
+@mcp.tool(
+    description="Remove a flag or keyword from one or more emails. Use '\\\\Flagged' to unflag, or specify keywords to remove.",
+)
+async def remove_flag(
+    account_name: Annotated[str, Field(description="The name of the email account.")],
+    email_ids: Annotated[
+        list[str],
+        Field(description="List of email_id to unflag (obtained from list_emails_metadata)."),
+    ],
+    flags: Annotated[
+        list[str],
+        Field(description="Flags to remove. Use '\\\\Flagged' to remove standard flag, or keywords like 'Personal', 'Alta'."),
+    ],
+    mailbox: Annotated[str, Field(default="INBOX", description="The mailbox containing the emails.")] = "INBOX",
+) -> str:
+    _check_permission(account_name, Permission.UPDATE, "remove flags")
+    start_time = time.time()
+    handler = dispatch_handler(account_name)
+    success_ids, failed_ids = await handler.remove_flags(email_ids, flags, mailbox)
+
+    elapsed_ms = int((time.time() - start_time) * 1000)
+    result = f"Removed flags from {len(success_ids)} email(s)"
+    if failed_ids:
+        result += f", failed on {len(failed_ids)} email(s): {', '.join(failed_ids)}"
+    return f"{result} ({elapsed_ms}ms)"

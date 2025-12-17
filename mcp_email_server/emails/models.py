@@ -26,6 +26,8 @@ class EmailMetadata(BaseModel):
     attachments: list[str]
     size_bytes: int | None = None
     size_human: str | None = None
+    flags: list[str] | None = None  # IMAP flags (e.g., \Seen, \Flagged)
+    keywords: list[str] | None = None  # Custom keywords (e.g., Personal, Alta, HOLD)
 
     @classmethod
     def from_email(cls, email: dict[str, Any]):
@@ -40,6 +42,8 @@ class EmailMetadata(BaseModel):
             attachments=email["attachments"],
             size_bytes=size_bytes,
             size_human=format_size(size_bytes) if size_bytes else None,
+            flags=email.get("flags"),
+            keywords=email.get("keywords"),
         )
 
 
@@ -66,6 +70,8 @@ class EmailBodyResponse(BaseModel):
     date: datetime
     body: str
     attachments: list[str]
+    flags: list[str] | None = None  # IMAP flags (e.g., \Seen, \Flagged)
+    keywords: list[str] | None = None  # Custom keywords (e.g., Personal, Alta, HOLD)
 
 
 class EmailContentBatchResponse(BaseModel):
