@@ -1,5 +1,6 @@
 import email.utils
 import mimetypes
+import re
 from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
 from email.header import Header
@@ -13,6 +14,7 @@ from typing import Any
 
 import aioimaplib
 import aiosmtplib
+import markdown
 
 from mcp_email_server.config import EmailServer, EmailSettings
 from mcp_email_server.emails import EmailHandler
@@ -24,6 +26,67 @@ from mcp_email_server.emails.models import (
     EmailMetadataPageResponse,
 )
 from mcp_email_server.log import logger
+
+# Regex patterns for content detection
+FRONTMATTER_PATTERN = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
+HTML_TAG_PATTERN = re.compile(r"<(p|div|br|h[1-6]|ul|ol|li|table|tr|td|th|span|a|img|strong|em)\b", re.IGNORECASE)
+MARKDOWN_PATTERNS = [
+    re.compile(r"^#{1,6}\s+", re.MULTILINE),  # Headers
+    re.compile(r"\*\*[^*]+\*\*"),  # Bold
+    re.compile(r"\*[^*]+\*"),  # Italic
+    re.compile(r"^\s*[-*+]\s+", re.MULTILINE),  # Unordered lists
+    re.compile(r"^\s*\d+\.\s+", re.MULTILINE),  # Ordered lists
+    re.compile(r"\[.+?\]\(.+?\)"),  # Links
+    re.compile(r"```"),  # Code blocks
+    re.compile(r"`[^`]+`"),  # Inline code
+    re.compile(r"^\|.+\|$", re.MULTILINE),  # Tables
+]
+
+
+def parse_frontmatter(body: str) -> tuple[dict[str, str], str]:
+    """Extract YAML frontmatter from body. Returns (metadata, body_without_frontmatter)."""
+    match = FRONTMATTER_PATTERN.match(body)
+    if not match:
+        return {}, body
+
+    frontmatter_content = match.group(1)
+    body_without_frontmatter = body[match.end():]
+
+    # Simple YAML parsing (key: value pairs only)
+    metadata = {}
+    for line in frontmatter_content.split("\n"):
+        line = line.strip()
+        if ":" in line:
+            key, value = line.split(":", 1)
+            metadata[key.strip().lower()] = value.strip().strip("\"'")
+
+    return metadata, body_without_frontmatter
+
+
+def detect_content_type(body: str) -> str:
+    """Detect if body is 'html', 'markdown', or 'plain'."""
+    # Check for HTML first
+    if HTML_TAG_PATTERN.search(body):
+        return "html"
+
+    # Check for Markdown patterns
+    markdown_matches = sum(1 for pattern in MARKDOWN_PATTERNS if pattern.search(body))
+    if markdown_matches >= 2:  # At least 2 markdown patterns to be confident
+        return "markdown"
+
+    return "plain"
+
+
+def convert_markdown_to_html(body: str) -> str:
+    """Convert Markdown to HTML with common extensions."""
+    md = markdown.Markdown(extensions=["tables", "fenced_code", "nl2br"])
+    return md.convert(body)
+
+
+def strip_html_tags(html: str) -> str:
+    """Remove HTML tags for plain text version."""
+    clean = re.sub(r"<[^>]+>", "", html)
+    return re.sub(r"\n\s*\n", "\n\n", clean).strip()
 
 
 class EmailClient:
@@ -668,6 +731,13 @@ class EmailClient:
 
         return msg
 
+    def _create_multipart_message(self, plain_text: str, html_content: str) -> MIMEMultipart:
+        """Create a multipart/alternative message with plain text and HTML versions."""
+        msg = MIMEMultipart("alternative")
+        msg.attach(MIMEText(plain_text, "plain", "utf-8"))
+        msg.attach(MIMEText(html_content, "html", "utf-8"))
+        return msg
+
     async def send_email(
         self,
         recipients: list[str],
@@ -680,12 +750,54 @@ class EmailClient:
         in_reply_to: str | None = None,
         references: str | None = None,
     ):
-        # Create message with or without attachments
-        if attachments:
-            msg = self._create_message_with_attachments(body, html, attachments)
+        # Parse frontmatter if present
+        metadata, body_content = parse_frontmatter(body)
+
+        # Use title from frontmatter if subject not provided
+        if not subject and "title" in metadata:
+            subject = metadata["title"]
+
+        # Detect content type and prepare body
+        if html:
+            # Explicit HTML mode - use as-is
+            plain_text = strip_html_tags(body_content)
+            html_content = body_content
+            use_multipart = True
         else:
-            content_type = "html" if html else "plain"
-            msg = MIMEText(body, content_type, "utf-8")
+            # Auto-detect content type
+            content_type = detect_content_type(body_content)
+            if content_type == "markdown":
+                plain_text = body_content
+                html_content = convert_markdown_to_html(body_content)
+                use_multipart = True
+            elif content_type == "html":
+                plain_text = strip_html_tags(body_content)
+                html_content = body_content
+                use_multipart = True
+            else:
+                # Plain text
+                plain_text = body_content
+                html_content = None
+                use_multipart = False
+
+        # Create message
+        if attachments:
+            # For attachments, create mixed multipart with body as first part
+            msg = MIMEMultipart("mixed")
+            if use_multipart:
+                body_part = self._create_multipart_message(plain_text, html_content)
+            else:
+                body_part = MIMEText(plain_text, "plain", "utf-8")
+            msg.attach(body_part)
+            # Add attachments
+            for file_path in attachments:
+                path = self._validate_attachment(file_path)
+                attachment_part = self._create_attachment_part(path)
+                msg.attach(attachment_part)
+        elif use_multipart:
+            msg = self._create_multipart_message(plain_text, html_content)
+        else:
+            msg = MIMEText(plain_text, "plain", "utf-8")
 
         # Handle subject with special characters
         if any(ord(c) > 127 for c in subject):
