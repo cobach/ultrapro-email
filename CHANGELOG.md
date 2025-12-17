@@ -1,0 +1,20 @@
+# Changelog - ultrapro-email
+
+Fork de [mcp-email-server](https://github.com/ai-zerolab/mcp-email-server) con mejoras para ultraPRO.
+
+## [Unreleased]
+
+### Added
+- `check_unread` tool - resumen de emails no leídos por categoría
+- `mark_as_read` tool - marcar emails como leídos sin obtener contenido
+- `mark_as_unread` tool - marcar emails como no leídos
+- Auto-detección Markdown → HTML en `send_email`
+- Tamaño de emails (`size_bytes`, `size_human`) en `check_unread` y `list_emails_metadata`
+- Tiempo de ejecución y remitente en respuesta de `send_email`
+- `get_emails_content` usa PEEK (no marca como leído automáticamente)
+
+### Fixed
+- Encoding correcto de nombres con caracteres especiales en header From
+
+### Docs
+- Security audit document

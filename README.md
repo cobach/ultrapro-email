@@ -232,6 +232,62 @@ await send_email(
 
 The `in_reply_to` parameter sets the `In-Reply-To` header, and `references` sets the `References` header. Both are used by email clients to thread conversations properly.
 
+### Checking Unread Emails
+
+Use `check_unread` to get a summary of unread emails across mailbox categories:
+
+```python
+result = await check_unread(account_name="work")
+# Returns: total_unread, total_count, and breakdown by category (INBOX, SOCIAL, PROMOTIONS, etc.)
+# Each unread email includes size_bytes and size_human for context estimation
+```
+
+### Markdown Auto-Detection
+
+When sending emails, Markdown content is automatically detected and converted to HTML:
+
+```python
+await send_email(
+    account_name="work",
+    recipients=["user@example.com"],
+    subject="Update",
+    body="# Hello\n\nThis is **bold** and this is *italic*.",
+)
+# Markdown is auto-detected and converted to HTML
+# No need to set html=True
+```
+
+### Email Sizes in Responses
+
+Both `check_unread` and `list_emails_metadata` include email sizes:
+
+```python
+# check_unread response includes:
+{
+    "emails": [
+        {"email_id": "123", "size_bytes": 10662, "size_human": "10.4 KB"},
+        ...
+    ]
+}
+
+# list_emails_metadata response includes:
+{
+    "emails": [
+        {"email_id": "123", "size_bytes": 10662, "size_human": "10.4 KB", ...},
+        ...
+    ]
+}
+```
+
+### Elapsed Time in Responses
+
+The `send_email` response includes elapsed time and sender information:
+
+```python
+result = await send_email(...)
+# Returns: "Email sent from user@example.com to recipient@example.com (1234ms)"
+```
+
 ## Development
 
 This project is managed using [uv](https://github.com/ai-zerolab/uv).
