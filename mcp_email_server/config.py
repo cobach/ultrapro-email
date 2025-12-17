@@ -7,7 +7,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 import tomli_w
-from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -16,6 +16,7 @@ from pydantic_settings import (
 )
 
 from mcp_email_server.log import logger
+from mcp_email_server.permissions import Permission, format_permissions, parse_permissions
 
 DEFAILT_CONFIG_PATH = "~/.config/ultrapro/email/config.toml"
 
@@ -77,6 +78,16 @@ class EmailSettings(AccountAttributes):
     outgoing: EmailServer
     save_to_sent: bool = True  # Save sent emails to IMAP Sent folder
     sent_folder_name: str | None = None  # Override Sent folder name (auto-detect if None)
+    permissions: Permission = Permission.FULL  # CRUDLEX permissions
+
+    @field_validator("permissions", mode="before")
+    @classmethod
+    def parse_permissions_field(cls, v: str | int | Permission | None) -> Permission:
+        return parse_permissions(v)
+
+    @field_serializer("permissions")
+    def serialize_permissions(self, v: Permission) -> str:
+        return format_permissions(v)
 
     @classmethod
     def init(
@@ -100,6 +111,7 @@ class EmailSettings(AccountAttributes):
         smtp_password: str | None = None,
         save_to_sent: bool = True,
         sent_folder_name: str | None = None,
+        permissions: Permission | str | None = None,
     ) -> EmailSettings:
         return cls(
             account_name=account_name,
@@ -122,6 +134,7 @@ class EmailSettings(AccountAttributes):
             ),
             save_to_sent=save_to_sent,
             sent_folder_name=sent_folder_name,
+            permissions=parse_permissions(permissions),
         )
 
     @classmethod
@@ -270,6 +283,15 @@ class Settings(BaseSettings):
     def delete_provider(self, account_name: str) -> None:
         """Use re-assigned for validation to work."""
         self.providers = [provider for provider in self.providers if provider.account_name != account_name]
+
+    def update_permissions(self, account_name: str, permissions: Permission | str) -> bool:
+        """Update permissions for an email account. Returns True if account was found."""
+        new_perms = parse_permissions(permissions) if isinstance(permissions, str) else permissions
+        for email in self.emails:
+            if email.account_name == account_name:
+                email.permissions = new_perms
+                return True
+        return False
 
     def get_account(self, account_name: str, masked: bool = False) -> EmailSettings | ProviderSettings | None:
         for email in self.emails:

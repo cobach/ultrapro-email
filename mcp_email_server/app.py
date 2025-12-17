@@ -10,8 +10,10 @@ from mcp_email_server.config import (
     EmailSettings,
     ProviderSettings,
     get_settings,
+    store_settings,
 )
 from mcp_email_server.emails.dispatcher import dispatch_handler
+from mcp_email_server.permissions import Permission, format_permissions, require_permission
 from mcp_email_server.emails.models import (
     AttachmentDownloadResponse,
     CategoryUnread,
@@ -23,6 +25,16 @@ from mcp_email_server.emails.models import (
 )
 
 mcp = FastMCP("email")
+
+
+def _check_permission(account_name: str, required: Permission, operation: str) -> None:
+    """Check if account has required permission, raise PermissionError if not."""
+    settings = get_settings()
+    account = settings.get_account(account_name)
+    if not account:
+        raise ValueError(f"Account '{account_name}' not found")
+    if isinstance(account, EmailSettings):
+        require_permission(account.permissions, required, operation, account_name)
 
 
 @mcp.resource("email://{account_name}")
@@ -77,6 +89,7 @@ async def list_emails_metadata(
     ] = "desc",
     mailbox: Annotated[str, Field(default="INBOX", description="The mailbox to retrieve emails from.")] = "INBOX",
 ) -> EmailMetadataPageResponse:
+    _check_permission(account_name, Permission.LIST, "list emails")
     handler = dispatch_handler(account_name)
 
     return await handler.get_emails_metadata(
@@ -105,6 +118,7 @@ async def get_emails_content(
     ],
     mailbox: Annotated[str, Field(default="INBOX", description="The mailbox to retrieve emails from.")] = "INBOX",
 ) -> EmailContentBatchResponse:
+    _check_permission(account_name, Permission.READ, "read email content")
     handler = dispatch_handler(account_name)
     return await handler.get_emails_content(email_ids, mailbox)
 
@@ -151,6 +165,7 @@ async def send_email(
         ),
     ] = None,
 ) -> str:
+    _check_permission(account_name, Permission.EXECUTE, "send email")
     start_time = time.time()
     settings = get_settings()
     account = settings.get_account(account_name)
@@ -186,6 +201,7 @@ async def delete_emails(
     ],
     mailbox: Annotated[str, Field(default="INBOX", description="The mailbox to delete emails from.")] = "INBOX",
 ) -> str:
+    _check_permission(account_name, Permission.DELETE, "delete emails")
     start_time = time.time()
     handler = dispatch_handler(account_name)
     deleted_ids, failed_ids = await handler.delete_emails(email_ids, mailbox)
@@ -210,6 +226,7 @@ async def download_attachment(
     ],
     save_path: Annotated[str, Field(description="The absolute path where the attachment should be saved.")],
 ) -> AttachmentDownloadResponse:
+    _check_permission(account_name, Permission.EXPORT, "download attachment")
     settings = get_settings()
     if not settings.enable_attachment_download:
         msg = (
@@ -230,6 +247,7 @@ async def check_unread(
         int, Field(default=20, description="Maximum number of unread email IDs to return per category.")
     ] = 20,
 ) -> UnreadResponse:
+    _check_permission(account_name, Permission.LIST, "check unread")
     handler = dispatch_handler(account_name)
     result = await handler.get_unread(max_ids)
 
@@ -271,6 +289,7 @@ async def mark_as_read(
     ],
     mailbox: Annotated[str, Field(default="INBOX", description="The mailbox containing the emails.")] = "INBOX",
 ) -> str:
+    _check_permission(account_name, Permission.UPDATE, "mark as read")
     start_time = time.time()
     handler = dispatch_handler(account_name)
     marked_ids, failed_ids = await handler.mark_as_read(email_ids, mailbox)
@@ -293,6 +312,7 @@ async def mark_as_unread(
     ],
     mailbox: Annotated[str, Field(default="INBOX", description="The mailbox containing the emails.")] = "INBOX",
 ) -> str:
+    _check_permission(account_name, Permission.UPDATE, "mark as unread")
     start_time = time.time()
     handler = dispatch_handler(account_name)
     marked_ids, failed_ids = await handler.mark_as_unread(email_ids, mailbox)
@@ -302,3 +322,31 @@ async def mark_as_unread(
     if failed_ids:
         result += f", failed to mark {len(failed_ids)} email(s): {', '.join(failed_ids)}"
     return f"{result} ({elapsed_ms}ms)"
+
+
+@mcp.tool(
+    description="Update CRUDLEX permissions for an email account. Permissions: CREATE, READ, UPDATE, DELETE, LIST, EXPORT, EXECUTE. Use pipe-separated values (e.g., 'READ|LIST|UPDATE') or aliases: FULL, READONLY, SAFE, NO_SEND, NO_DELETE.",
+)
+async def update_account_permissions(
+    account_name: Annotated[str, Field(description="The name of the email account to update.")],
+    permissions: Annotated[
+        str,
+        Field(
+            description="New permissions. Use pipe-separated values like 'READ|LIST|UPDATE' or aliases: FULL (all), READONLY (LIST|READ), SAFE (LIST|READ|UPDATE), NO_SEND (all except EXECUTE), NO_DELETE (all except DELETE)."
+        ),
+    ],
+) -> str:
+    settings = get_settings()
+    account = settings.get_account(account_name)
+    if not account:
+        raise ValueError(f"Account '{account_name}' not found")
+    if not isinstance(account, EmailSettings):
+        raise ValueError(f"Account '{account_name}' is not an email account")
+
+    old_perms = format_permissions(account.permissions)
+    if not settings.update_permissions(account_name, permissions):
+        raise ValueError(f"Failed to update permissions for '{account_name}'")
+    store_settings(settings)
+
+    new_perms = format_permissions(settings.get_account(account_name).permissions)
+    return f"Updated '{account_name}' permissions: {old_perms} -> {new_perms}"

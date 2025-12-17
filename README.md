@@ -288,6 +288,36 @@ result = await send_email(...)
 # Returns: "Email sent from user@example.com to recipient@example.com (1234ms)"
 ```
 
+### CRUDLEX Permissions
+
+Each email account has granular permissions using the CRUDLEX model:
+
+| Permission | Operations |
+|------------|------------|
+| **C**reate | Create drafts (future) |
+| **R**ead | Read email content (`get_emails_content`) |
+| **U**pdate | Modify metadata (`mark_as_read`, `mark_as_unread`) |
+| **D**elete | Delete emails (`delete_emails`) |
+| **L**ist | List emails (`list_emails_metadata`, `check_unread`) |
+| **E**xport | Download attachments (`download_attachment`) |
+| e**X**ecute | Send emails (`send_email`) |
+
+**Update permissions:**
+
+```python
+await update_account_permissions(
+    account_name="work",
+    permissions="CREATE|READ|UPDATE|LIST|EXPORT"  # No DELETE, no EXECUTE
+)
+```
+
+**Permission aliases:**
+- `FULL` - All permissions
+- `READONLY` - LIST|READ only
+- `SAFE` - LIST|READ|UPDATE (no send, no delete)
+- `NO_SEND` - All except EXECUTE
+- `NO_DELETE` - All except DELETE
+
 ## Development
 
 This project is managed using [uv](https://github.com/ai-zerolab/uv).

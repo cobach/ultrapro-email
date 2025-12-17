@@ -5,6 +5,8 @@ Fork de [mcp-email-server](https://github.com/ai-zerolab/mcp-email-server) con m
 ## [Unreleased]
 
 ### Added
+- Sistema de permisos CRUDLEX por cuenta (CREATE, READ, UPDATE, DELETE, LIST, EXPORT, EXECUTE)
+- `update_account_permissions` tool - modificar permisos de cuentas
 - `check_unread` tool - resumen de emails no leídos por categoría
 - `mark_as_read` tool - marcar emails como leídos sin obtener contenido
 - `mark_as_unread` tool - marcar emails como no leídos
