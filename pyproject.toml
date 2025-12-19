@@ -36,7 +36,7 @@ dependencies = [
 up-mcp-email = "mcp_email_server.cli:app"
 
 [project.urls]
-Repository = "https://github.com/cobach/up-mcp-email"
+Repository = "https://github.com/grupoultra/up-mcp-email"
 
 [dependency-groups]
 dev = [
