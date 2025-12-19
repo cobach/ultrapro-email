@@ -2,7 +2,7 @@
 
 **Date:** 2024-12-16
 **Auditor:** Claude (Wing Coding)
-**Repository:** https://github.com/cobach/up-mcp-email
+**Repository:** https://github.com/grupoultra/up-mcp-email
 **Original Source:** https://github.com/ai-zerolab/mcp-email-server
 **Version:** 0.0.1
 
