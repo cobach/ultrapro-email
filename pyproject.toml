@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "ultraPRO Email MCP Server - IMAP and SMTP integration for Claude"
 authors = [{ name = "César Obach / ultraBASE", email = "cesar@ultrabase.cl" }]
 readme = "README.md"
+license = "MIT"
 keywords = ["MCP", "IMAP", "SMTP", "email", "ultraPRO", "Claude"]
 requires-python = ">=3.10,<4.0"
 classifiers = [
