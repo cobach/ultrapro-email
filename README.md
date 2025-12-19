@@ -1,16 +1,35 @@
-# mcp-email-server
-
-[![Release](https://img.shields.io/github/v/release/ai-zerolab/mcp-email-server)](https://img.shields.io/github/v/release/ai-zerolab/mcp-email-server)
-[![Build status](https://img.shields.io/github/actions/workflow/status/ai-zerolab/mcp-email-server/main.yml?branch=main)](https://github.com/ai-zerolab/mcp-email-server/actions/workflows/main.yml?query=branch%3Amain)
-[![codecov](https://codecov.io/gh/ai-zerolab/mcp-email-server/branch/main/graph/badge.svg)](https://codecov.io/gh/ai-zerolab/mcp-email-server)
-[![Commit activity](https://img.shields.io/github/commit-activity/m/ai-zerolab/mcp-email-server)](https://img.shields.io/github/commit-activity/m/ai-zerolab/mcp-email-server)
-[![License](https://img.shields.io/github/license/ai-zerolab/mcp-email-server)](https://img.shields.io/github/license/ai-zerolab/mcp-email-server)
-[![smithery badge](https://smithery.ai/badge/@ai-zerolab/mcp-email-server)](https://smithery.ai/server/@ai-zerolab/mcp-email-server)
+# up-mcp-email
 
 IMAP and SMTP via MCP Server
 
-- **Github repository**: <https://github.com/ai-zerolab/mcp-email-server/>
-- **Documentation** <https://ai-zerolab.github.io/mcp-email-server/>
+## Origin
+
+This is a fork of [mcp-email-server](https://github.com/ai-zerolab/mcp-email-server) by [ai-zerolab](https://github.com/ai-zerolab).
+
+**Fork maintainer:** [ultraBASE.net](https://ultrabase.net)
+
+A security audit was performed before integrating this codebase. See [SECURITY-AUDIT.md](SECURITY-AUDIT.md) for details.
+
+## Fork Enhancements
+
+Features added by ultraBASE to the original mcp-email-server:
+
+| Feature | Description |
+|---------|-------------|
+| **CRUDLEX Permissions** | Granular per-account permissions (CREATE, READ, UPDATE, DELETE, LIST, EXPORT, EXECUTE) |
+| **`check_unread`** | Summary of unread emails by category with size info |
+| **`mark_as_read` / `mark_as_unread`** | Explicit read status control |
+| **`list_flagged` / `set_flag` / `remove_flag`** | Email flags and keywords management |
+| **`update_email_account`** | Update account password and display name |
+| **PEEK mode** | `get_emails_content` doesn't mark emails as read |
+| **Markdown auto-detection** | Auto-convert Markdown to HTML in `send_email` |
+| **Email sizes** | `size_bytes` and `size_human` in metadata responses |
+| **Elapsed time** | Execution time in `send_email` response |
+| **Better error handling** | `IMAPConnectionError` with descriptive messages |
+
+See [CHANGELOG.md](CHANGELOG.md) for full history.
+
+---
 
 ## Installation
 
@@ -18,33 +37,37 @@ IMAP and SMTP via MCP Server
 
 We recommend using [uv](https://github.com/astral-sh/uv) to manage your environment.
 
-Try `uvx mcp-email-server@latest ui` to config, and use following configuration for mcp client:
+Clone this repository and install:
+
+```bash
+git clone https://github.com/ultraBASE/up-mcp-email.git
+cd up-mcp-email
+uv sync
+```
+
+Configure for your MCP client:
 
 ```json
 {
   "mcpServers": {
-    "zerolib-email": {
-      "command": "uvx",
-      "args": ["mcp-email-server@latest", "stdio"]
+    "up-mcp-email": {
+      "command": "uv",
+      "args": ["run", "--directory", "/path/to/up-mcp-email", "mcp-email-server", "stdio"]
     }
   }
 }
 ```
 
-This package is available on PyPI, so you can install it using `pip install mcp-email-server`
-
-After that, configure your email server using the ui: `mcp-email-server ui`
-
 ### Environment Variable Configuration
 
-You can also configure the email server using environment variables, which is particularly useful for CI/CD environments like Jenkins. zerolib-email supports both UI configuration (via TOML file) and environment variables, with environment variables taking precedence.
+You can configure the email server using environment variables, which is particularly useful for CI/CD environments. Environment variables take precedence over TOML configuration.
 
 ```json
 {
   "mcpServers": {
-    "zerolib-email": {
-      "command": "uvx",
-      "args": ["mcp-email-server@latest", "stdio"],
+    "up-mcp-email": {
+      "command": "uv",
+      "args": ["run", "--directory", "/path/to/up-mcp-email", "mcp-email-server", "stdio"],
       "env": {
         "MCP_EMAIL_SERVER_ACCOUNT_NAME": "work",
         "MCP_EMAIL_SERVER_FULL_NAME": "John Doe",
@@ -81,29 +104,26 @@ You can also configure the email server using environment variables, which is pa
 | `MCP_EMAIL_SERVER_SAVE_TO_SENT`               | Save sent emails to IMAP Sent folder             | `true`        | No       |
 | `MCP_EMAIL_SERVER_SENT_FOLDER_NAME`           | Custom Sent folder name (auto-detect if not set) | -             | No       |
 
+For separate IMAP/SMTP credentials:
+
+- `MCP_EMAIL_SERVER_IMAP_USER_NAME` / `MCP_EMAIL_SERVER_IMAP_PASSWORD`
+- `MCP_EMAIL_SERVER_SMTP_USER_NAME` / `MCP_EMAIL_SERVER_SMTP_PASSWORD`
+
 ### Enabling Attachment Downloads
 
-By default, downloading email attachments is disabled for security reasons. To enable this feature, you can either:
+By default, downloading email attachments is disabled for security reasons. To enable:
 
-**Option 1: Environment Variable**
+**Environment Variable:**
 
 ```json
 {
-  "mcpServers": {
-    "zerolib-email": {
-      "command": "uvx",
-      "args": ["mcp-email-server@latest", "stdio"],
-      "env": {
-        "MCP_EMAIL_SERVER_ENABLE_ATTACHMENT_DOWNLOAD": "true"
-      }
-    }
+  "env": {
+    "MCP_EMAIL_SERVER_ENABLE_ATTACHMENT_DOWNLOAD": "true"
   }
 }
 ```
 
-**Option 2: TOML Configuration**
-
-Add `enable_attachment_download = true` to your TOML configuration file (`~/.config/zerolib/mcp_email_server/config.toml`):
+**TOML Configuration** (`~/.config/zerolib/mcp_email_server/config.toml`):
 
 ```toml
 enable_attachment_download = true
@@ -112,82 +132,22 @@ enable_attachment_download = true
 # ... your email configuration
 ```
 
-Once enabled, you can use the `download_attachment` tool to save email attachments to a specified path.
-
 ### Saving Sent Emails to IMAP Sent Folder
 
-By default, sent emails are automatically saved to your IMAP Sent folder. This ensures that emails sent via the MCP server appear in your email client (Thunderbird, webmail, etc.).
+By default, sent emails are automatically saved to your IMAP Sent folder.
 
 The server auto-detects common Sent folder names: `Sent`, `INBOX.Sent`, `Sent Items`, `Sent Mail`, `[Gmail]/Sent Mail`.
 
-**To specify a custom Sent folder name** (useful for providers with non-standard folder names):
-
-**Option 1: Environment Variable**
-
-```json
-{
-  "mcpServers": {
-    "zerolib-email": {
-      "command": "uvx",
-      "args": ["mcp-email-server@latest", "stdio"],
-      "env": {
-        "MCP_EMAIL_SERVER_SENT_FOLDER_NAME": "INBOX.Sent"
-      }
-    }
-  }
-}
-```
-
-**Option 2: TOML Configuration**
+To specify a custom folder or disable:
 
 ```toml
 [[emails]]
 account_name = "work"
-save_to_sent = true
+save_to_sent = true          # or false to disable
 sent_folder_name = "INBOX.Sent"
-# ... rest of your email configuration
 ```
 
-**To disable saving to Sent folder**, set `MCP_EMAIL_SERVER_SAVE_TO_SENT=false` or `save_to_sent = false` in your TOML config.
-
-For separate IMAP/SMTP credentials, you can also use:
-
-- `MCP_EMAIL_SERVER_IMAP_USER_NAME` / `MCP_EMAIL_SERVER_IMAP_PASSWORD`
-- `MCP_EMAIL_SERVER_SMTP_USER_NAME` / `MCP_EMAIL_SERVER_SMTP_PASSWORD`
-
-Then you can try it in [Claude Desktop](https://claude.ai/download). If you want to intergrate it with other mcp client, run `$which mcp-email-server` for the path and configure it in your client like:
-
-```json
-{
-  "mcpServers": {
-    "zerolib-email": {
-      "command": "{{ ENTRYPOINT }}",
-      "args": ["stdio"]
-    }
-  }
-}
-```
-
-If `docker` is avaliable, you can try use docker image, but you may need to config it in your client using `tools` via `MCP`. The default config path is `~/.config/zerolib/mcp_email_server/config.toml`
-
-```json
-{
-  "mcpServers": {
-    "zerolib-email": {
-      "command": "docker",
-      "args": ["run", "-it", "ghcr.io/ai-zerolab/mcp-email-server:latest"]
-    }
-  }
-}
-```
-
-### Installing via Smithery
-
-To install Email Server for Claude Desktop automatically via [Smithery](https://smithery.ai/server/@ai-zerolab/mcp-email-server):
-
-```bash
-npx -y @smithery/cli install @ai-zerolab/mcp-email-server --client claude
-```
+---
 
 ## Usage
 
@@ -208,18 +168,12 @@ await mark_as_unread(account_name="work", email_ids=["123"])
 
 ### Replying to Emails
 
-To reply to an email with proper threading (so it appears in the same conversation in email clients):
-
-1. First, fetch the original email to get its `message_id`:
+To reply to an email with proper threading:
 
 ```python
 emails = await get_emails_content(account_name="work", email_ids=["123"])
 original = emails.emails[0]
-```
 
-2. Send your reply using `in_reply_to` and `references`:
-
-```python
 await send_email(
     account_name="work",
     recipients=[original.sender],
@@ -230,11 +184,7 @@ await send_email(
 )
 ```
 
-The `in_reply_to` parameter sets the `In-Reply-To` header, and `references` sets the `References` header. Both are used by email clients to thread conversations properly.
-
 ### Checking Unread Emails
-
-Use `check_unread` to get a summary of unread emails across mailbox categories:
 
 ```python
 result = await check_unread(account_name="work")
@@ -254,43 +204,11 @@ await send_email(
     body="# Hello\n\nThis is **bold** and this is *italic*.",
 )
 # Markdown is auto-detected and converted to HTML
-# No need to set html=True
-```
-
-### Email Sizes in Responses
-
-Both `check_unread` and `list_emails_metadata` include email sizes:
-
-```python
-# check_unread response includes:
-{
-    "emails": [
-        {"email_id": "123", "size_bytes": 10662, "size_human": "10.4 KB"},
-        ...
-    ]
-}
-
-# list_emails_metadata response includes:
-{
-    "emails": [
-        {"email_id": "123", "size_bytes": 10662, "size_human": "10.4 KB", ...},
-        ...
-    ]
-}
-```
-
-### Elapsed Time in Responses
-
-The `send_email` response includes elapsed time and sender information:
-
-```python
-result = await send_email(...)
-# Returns: "Email sent from user@example.com to recipient@example.com (1234ms)"
 ```
 
 ### CRUDLEX Permissions
 
-Each email account has granular permissions using the CRUDLEX model:
+Each email account has granular permissions:
 
 | Permission | Operations |
 |------------|------------|
@@ -302,8 +220,6 @@ Each email account has granular permissions using the CRUDLEX model:
 | **E**xport | Download attachments (`download_attachment`) |
 | e**X**ecute | Send emails (`send_email`) |
 
-**Update permissions:**
-
 ```python
 await update_account_permissions(
     account_name="work",
@@ -311,65 +227,39 @@ await update_account_permissions(
 )
 ```
 
-**Permission aliases:**
-- `FULL` - All permissions
-- `READONLY` - LIST|READ only
-- `SAFE` - LIST|READ|UPDATE (no send, no delete)
-- `NO_SEND` - All except EXECUTE
-- `NO_DELETE` - All except DELETE
+**Permission aliases:** `FULL`, `READONLY`, `SAFE`, `NO_SEND`, `NO_DELETE`
 
 ### Email Flags and Keywords
 
-Emails can have system flags (like `\Flagged`, `\Seen`) and custom keywords. The metadata includes these fields:
-
 ```python
-# list_emails_metadata and get_emails_content include:
-{
-    "flags": ["\\Flagged", "\\Seen"],  # System flags
-    "keywords": ["Personal", "Important"]  # Custom keywords
-}
-```
-
-**List flagged emails:**
-
-```python
+# List flagged emails
 result = await list_flagged(account_name="work")
-# Returns: total_flagged, by_keyword breakdown, and email_ids
-
-# Filter by specific keyword:
 result = await list_flagged(account_name="work", keyword="Personal")
-```
 
-**Add flags/keywords to emails:**
-
-```python
-# Add standard flag
-await set_flag(account_name="work", email_ids=["123", "456"], flags=["\\Flagged"])
-
-# Add custom keyword
+# Add flags/keywords
+await set_flag(account_name="work", email_ids=["123"], flags=["\\Flagged"])
 await set_flag(account_name="work", email_ids=["123"], flags=["Personal", "Alta"])
-```
 
-**Remove flags/keywords:**
-
-```python
+# Remove flags/keywords
 await remove_flag(account_name="work", email_ids=["123"], flags=["\\Flagged"])
-await remove_flag(account_name="work", email_ids=["123"], flags=["Personal"])
 ```
+
+---
 
 ## Development
 
-This project is managed using [uv](https://github.com/ai-zerolab/uv).
+This project is managed using [uv](https://github.com/astral-sh/uv).
 
-Try `make install` to install the virtual environment and install the pre-commit hooks.
+```bash
+make install    # Install virtual environment and pre-commit hooks
+uv run mcp-email-server   # Run for local development
+make check      # Run linters/formatters
+make test       # Run unit tests
+```
 
-Use `uv run mcp-email-server` for local development.
+---
 
-## Releasing a new version
+## Upstream
 
-- Create an API Token on [PyPI](https://pypi.org/).
-- Add the API Token to your projects secrets with the name `PYPI_TOKEN` by visiting [this page](https://github.com/ai-zerolab/mcp-email-server/settings/secrets/actions/new).
-- Create a [new release](https://github.com/ai-zerolab/mcp-email-server/releases/new) on Github.
-- Create a new tag in the form `*.*.*`.
-
-For more details, see [here](https://fpgmaas.github.io/cookiecutter-uv/features/cicd/#how-to-trigger-a-release).
+- **Original repository:** https://github.com/ai-zerolab/mcp-email-server
+- **Original documentation:** https://ai-zerolab.github.io/mcp-email-server/

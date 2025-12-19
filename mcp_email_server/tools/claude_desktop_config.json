@@ -1,6 +1,6 @@
 {
     "mcpServers": {
-        "ultrapro-email": {
+        "up-mcp-email": {
             "command": "{{ ENTRYPOINT }}",
             "args": ["stdio"]
         }

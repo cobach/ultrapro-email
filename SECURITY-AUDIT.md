@@ -1,8 +1,8 @@
-# Security Audit Report - ultrapro-email
+# Security Audit Report - up-mcp-email
 
 **Date:** 2024-12-16
 **Auditor:** Claude (Wing Coding)
-**Repository:** https://github.com/cobach/ultrapro-email
+**Repository:** https://github.com/cobach/up-mcp-email
 **Original Source:** https://github.com/ai-zerolab/mcp-email-server
 **Version:** 0.0.1
 
@@ -10,7 +10,7 @@
 
 ## Executive Summary
 
-This security audit was performed on the forked repository `ultrapro-email` (originally `mcp-email-server` by ai-zerolab) before integrating it into the ultraPRO ecosystem. The audit focused on identifying malicious behaviors, data exfiltration, backdoors, and security vulnerabilities.
+This security audit was performed on the forked repository `up-mcp-email` (originally `mcp-email-server` by ai-zerolab) before integrating it into the ultraPRO ecosystem. The audit focused on identifying malicious behaviors, data exfiltration, backdoors, and security vulnerabilities.
 
 **Result: PASSED** - No malicious code detected. The codebase is suitable for use after branding adjustments.
 
@@ -121,7 +121,7 @@ The application implements a conservative permission model:
 
 1. **Rebrand paths and identifiers**
    - Change `zerolib` → `ultrapro` in config paths
-   - Change `zerolib-email` → `ultrapro-email` in Claude integration
+   - Change `zerolib-email` → `up-mcp-email` in Claude integration
    - Update project metadata in `pyproject.toml`
 
 2. **Consider credential encryption**

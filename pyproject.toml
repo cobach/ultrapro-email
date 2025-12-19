@@ -1,5 +1,5 @@
 [project]
-name = "ultrapro-email"
+name = "up-mcp-email"
 version = "0.1.0"
 description = "ultraPRO Email MCP Server - IMAP and SMTP integration for Claude"
 authors = [{ name = "César Obach / ultraBASE", email = "cesar@ultrabase.cl" }]
@@ -32,10 +32,10 @@ dependencies = [
 ]
 
 [project.scripts]
-ultrapro-email = "mcp_email_server.cli:app"
+up-mcp-email = "mcp_email_server.cli:app"
 
 [project.urls]
-Repository = "https://github.com/cobach/ultrapro-email"
+Repository = "https://github.com/cobach/up-mcp-email"
 
 [dependency-groups]
 dev = [

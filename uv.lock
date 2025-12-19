@@ -2332,7 +2332,7 @@ wheels = [
 ]
 
 [[package]]
-name = "ultrapro-email"
+name = "up-mcp-email"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

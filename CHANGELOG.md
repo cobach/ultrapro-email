@@ -1,4 +1,4 @@
-# Changelog - ultrapro-email
+# Changelog - up-mcp-email
 
 Fork de [mcp-email-server](https://github.com/ai-zerolab/mcp-email-server) con mejoras para ultraPRO.
 

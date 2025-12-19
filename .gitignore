@@ -1,3 +1,13 @@
+# Local files
+local/
+
+# Markdown in root (except standard docs)
+/*.md
+!README.md
+!CONTRIBUTING.md
+!CHANGELOG.md
+!SECURITY-AUDIT.md
+
 docs/source
 
 # From https://raw.githubusercontent.com/github/gitignore/main/Python.gitignore
@@ -140,5 +150,4 @@ cython_debug/
 #.idea/
 
 tests/config.toml
-local/
 config.toml
