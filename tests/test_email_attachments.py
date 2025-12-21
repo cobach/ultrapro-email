@@ -163,7 +163,6 @@ class TestEmailAttachments:
                 recipients=["recipient@example.com"],
                 subject="HTML email with attachment",
                 body="<h1>Report</h1><p>See attached</p>",
-                html=True,
                 attachments=[str(test_file)],
             )
 

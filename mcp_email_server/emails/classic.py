@@ -1027,24 +1027,6 @@ class EmailClient:
         logger.info(f"Attached file: {path.name} ({mime_type})")
         return attachment_part
 
-    def _create_message_with_attachments(self, body: str, html: bool, attachments: list[str]) -> MIMEMultipart:
-        """Create multipart message with attachments."""
-        msg = MIMEMultipart()
-        content_type = "html" if html else "plain"
-        text_part = MIMEText(body, content_type, "utf-8")
-        msg.attach(text_part)
-
-        for file_path in attachments:
-            try:
-                path = self._validate_attachment(file_path)
-                attachment_part = self._create_attachment_part(path)
-                msg.attach(attachment_part)
-            except Exception as e:
-                logger.error(f"Failed to attach file {file_path}: {e}")
-                raise
-
-        return msg
-
     def _create_multipart_message(self, plain_text: str, html_content: str) -> MIMEMultipart:
         """Create a multipart/alternative message with plain text and HTML versions."""
         msg = MIMEMultipart("alternative")
@@ -1059,7 +1041,6 @@ class EmailClient:
         body: str,
         cc: list[str] | None = None,
         bcc: list[str] | None = None,
-        html: bool = False,
         attachments: list[str] | None = None,
         in_reply_to: str | None = None,
         references: str | None = None,
@@ -1071,28 +1052,21 @@ class EmailClient:
         if not subject and "title" in metadata:
             subject = metadata["title"]
 
-        # Detect content type and prepare body
-        if html:
-            # Explicit HTML mode - use as-is
+        # Auto-detect content type and prepare body
+        content_type = detect_content_type(body_content)
+        if content_type == "markdown":
+            plain_text = body_content
+            html_content = convert_markdown_to_html(body_content)
+            use_multipart = True
+        elif content_type == "html":
             plain_text = strip_html_tags(body_content)
             html_content = body_content
             use_multipart = True
         else:
-            # Auto-detect content type
-            content_type = detect_content_type(body_content)
-            if content_type == "markdown":
-                plain_text = body_content
-                html_content = convert_markdown_to_html(body_content)
-                use_multipart = True
-            elif content_type == "html":
-                plain_text = strip_html_tags(body_content)
-                html_content = body_content
-                use_multipart = True
-            else:
-                # Plain text
-                plain_text = body_content
-                html_content = None
-                use_multipart = False
+            # Plain text
+            plain_text = body_content
+            html_content = None
+            use_multipart = False
 
         # Create message
         if attachments:
@@ -1352,13 +1326,12 @@ class ClassicEmailHandler(EmailHandler):
         body: str,
         cc: list[str] | None = None,
         bcc: list[str] | None = None,
-        html: bool = False,
         attachments: list[str] | None = None,
         in_reply_to: str | None = None,
         references: str | None = None,
     ) -> None:
         msg = await self.outgoing_client.send_email(
-            recipients, subject, body, cc, bcc, html, attachments, in_reply_to, references
+            recipients, subject, body, cc, bcc, attachments, in_reply_to, references
         )
 
         # Save to Sent folder if enabled

@@ -171,10 +171,6 @@ async def send_email(
         list[str] | None,
         Field(default=None, description="A list of BCC email addresses."),
     ] = None,
-    html: Annotated[
-        bool,
-        Field(default=False, description="Whether to send the email as HTML (True) or plain text (False)."),
-    ] = False,
     attachments: Annotated[
         list[str] | None,
         Field(
@@ -210,7 +206,6 @@ async def send_email(
         body,
         cc,
         bcc,
-        html,
         attachments,
         in_reply_to,
         references,

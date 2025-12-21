@@ -42,11 +42,12 @@ class EmailHandler(abc.ABC):
         body: str,
         cc: list[str] | None = None,
         bcc: list[str] | None = None,
-        html: bool = False,
         attachments: list[str] | None = None,
+        in_reply_to: str | None = None,
+        references: str | None = None,
     ) -> None:
         """
-        Send email
+        Send email. Body format is auto-detected (Markdown, HTML, or plain text).
         """
 
     @abc.abstractmethod
