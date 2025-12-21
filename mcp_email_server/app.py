@@ -156,13 +156,13 @@ async def get_emails_content(
 
 
 @mcp.tool(
-    description="Send an email using the specified account. Supports replying to emails with proper threading when in_reply_to is provided.",
+    description="Send an email using the specified account. Body format (Markdown, HTML, or plain text) is automatically detected. Supports replying to emails with proper threading when in_reply_to is provided.",
 )
 async def send_email(
     account_name: Annotated[str, Field(description="The name of the email account to send from.")],
     recipients: Annotated[list[str], Field(description="A list of recipient email addresses.")],
     subject: Annotated[str, Field(description="The subject of the email.")],
-    body: Annotated[str, Field(description="The body of the email.")],
+    body: Annotated[str, Field(description="The body of the email. Supports Markdown, HTML, or plain text - format is auto-detected.")],
     cc: Annotated[
         list[str] | None,
         Field(default=None, description="A list of CC email addresses."),
