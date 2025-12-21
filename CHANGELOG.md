@@ -15,10 +15,14 @@ Fork de [mcp-email-server](https://github.com/ai-zerolab/mcp-email-server) con m
 - `remove_flag` tool - quitar flags/keywords de emails
 - `update_email_account` tool - actualizar password y/o full_name de una cuenta
 - Campos `flags` y `keywords` en metadata de emails
-- Auto-detección Markdown → HTML en `send_email`
+- Auto-detección de formato de contenido (Markdown, HTML, o plain text) en `send_email`
 - Tamaño de emails (`size_bytes`, `size_human`) en `check_unread` y `list_emails_metadata`
 - Tiempo de ejecución y remitente en respuesta de `send_email`
 - `get_emails_content` usa PEEK (no marca como leído automáticamente)
+
+### Changed
+- **BREAKING:** Eliminado parámetro `html` de `send_email` - el formato ahora se detecta automáticamente
+- Descripción de `send_email` tool actualizada para comunicar capacidades de auto-detección a agentes MCP
 
 ### Fixed
 - Encoding correcto de nombres con caracteres especiales en header From

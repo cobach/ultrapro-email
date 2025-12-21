@@ -22,7 +22,7 @@ Features added by ultraBASE to the original mcp-email-server:
 | **`list_flagged` / `set_flag` / `remove_flag`** | Email flags and keywords management |
 | **`update_email_account`** | Update account password and display name |
 | **PEEK mode** | `get_emails_content` doesn't mark emails as read |
-| **Markdown auto-detection** | Auto-convert Markdown to HTML in `send_email` |
+| **Content auto-detection** | Auto-detect Markdown, HTML, or plain text in `send_email` |
 | **Email sizes** | `size_bytes` and `size_human` in metadata responses |
 | **Elapsed time** | Execution time in `send_email` response |
 | **Better error handling** | `IMAPConnectionError` with descriptive messages |
@@ -192,19 +192,40 @@ result = await check_unread(account_name="work")
 # Each unread email includes size_bytes and size_human for context estimation
 ```
 
-### Markdown Auto-Detection
+### Content Format Auto-Detection
 
-When sending emails, Markdown content is automatically detected and converted to HTML:
+When sending emails, the body format is automatically detected - no need to specify whether it's Markdown, HTML, or plain text:
 
 ```python
+# Markdown - auto-detected and converted to HTML
 await send_email(
     account_name="work",
     recipients=["user@example.com"],
     subject="Update",
     body="# Hello\n\nThis is **bold** and this is *italic*.",
 )
-# Markdown is auto-detected and converted to HTML
+
+# HTML - auto-detected and sent as HTML
+await send_email(
+    account_name="work",
+    recipients=["user@example.com"],
+    subject="Report",
+    body="<h1>Report</h1><p>See <strong>attached</strong> file.</p>",
+)
+
+# Plain text - auto-detected and sent as plain text
+await send_email(
+    account_name="work",
+    recipients=["user@example.com"],
+    subject="Simple message",
+    body="This is a simple plain text message.",
+)
 ```
+
+**Detection logic:**
+- HTML if body contains HTML tags (`<html>`, `<body>`, `<p>`, etc.)
+- Markdown if body has ≥2 Markdown patterns (`##`, `**`, `- `, `[]()`, etc.)
+- Plain text otherwise
 
 ### CRUDLEX Permissions
 
